@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Stillpage — a minimal, eye-friendly eBook reader for your browser." />
+  <title>Stillpage — Eye-friendly eBook reader</title>
+  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+</head>
+<body class="theme-sepia" data-view="home">
+
+  <!-- ========================= HOME / UPLOAD ========================= -->
+  <section id="home" class="home">
+    <div class="home-inner">
+      <h1 class="home-title">Stillpage</h1>
+      <p class="home-tagline">A calm place to read your documents.</p>
+
+      <label id="drop-zone" class="drop-zone" for="file-input" tabindex="0">
+        <div class="drop-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h12l4 4v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>
+            <path d="M16 4v4h4"/>
+            <path d="M12 18v-6"/>
+            <path d="M9 15l3-3 3 3"/>
+          </svg>
+        </div>
+        <div class="drop-text">
+          <strong>Drop a file here</strong>
+          <span>or click to browse</span>
+        </div>
+        <input id="file-input" type="file" accept=".pdf,.epub,.txt,.md,.markdown" hidden />
+      </label>
+
+      <div class="format-pills" aria-label="Supported formats">
+        <span class="pill">PDF</span>
+        <span class="pill">EPUB</span>
+        <span class="pill">TXT</span>
+        <span class="pill">MD</span>
+      </div>
+
+      <div id="error-banner" class="error-banner" hidden></div>
+
+      <div id="recent-section" class="recent-section" hidden>
+        <h2 class="recent-title">Recently opened</h2>
+        <ul id="recent-list" class="recent-list"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========================= READER ========================= -->
+  <section id="reader" class="reader" hidden>
+    <header id="top-bar" class="top-bar">
+      <button id="btn-home" class="icon-btn" title="Back to home (Esc)" aria-label="Back to home">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+      </button>
+      <div id="book-title" class="book-title">Untitled</div>
+      <div class="top-bar-actions">
+        <button id="btn-toc" class="icon-btn" title="Table of contents" aria-label="Table of contents">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        </button>
+        <button id="btn-settings" class="icon-btn" title="Typography & theme" aria-label="Typography and theme">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M4 12h10"/><path d="M4 17h16"/></svg>
+        </button>
+        <button id="btn-bookmark" class="icon-btn" title="Add bookmark (B)" aria-label="Add bookmark">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+        </button>
+        <button id="btn-fullscreen" class="icon-btn" title="Fullscreen (F)" aria-label="Fullscreen">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4"/><path d="M20 9V5a1 1 0 0 0-1-1h-4"/><path d="M4 15v4a1 1 0 0 0 1 1h4"/><path d="M20 15v4a1 1 0 0 1-1 1h-4"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <main id="reading-area" class="reading-area">
+      <div id="page-prev-hit" class="edge-hit edge-left" aria-hidden="true"></div>
+      <div id="page-next-hit" class="edge-hit edge-right" aria-hidden="true"></div>
+      <div id="viewer" class="viewer"></div>
+      <div id="loading" class="loading" hidden>Loading…</div>
+    </main>
+
+    <footer id="bottom-bar" class="bottom-bar">
+      <button id="btn-prev" class="nav-btn" aria-label="Previous page">‹</button>
+      <div class="progress-wrap">
+        <div id="progress-bar" class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+          <div id="bookmark-dots" class="bookmark-dots"></div>
+        </div>
+        <div class="progress-meta">
+          <span id="page-label">Page — of —</span>
+          <button id="btn-goto" class="text-btn" title="Go to page (Ctrl+G)">Go to…</button>
+        </div>
+      </div>
+      <button id="btn-next" class="nav-btn" aria-label="Next page">›</button>
+    </footer>
+  </section>
+
+  <!-- ========================= SETTINGS PANEL ========================= -->
+  <aside id="settings-panel" class="side-panel" hidden>
+    <div class="panel-header">
+      <h2>Reading</h2>
+      <button class="icon-btn panel-close" data-close="settings-panel" aria-label="Close">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="control-group">
+        <label class="control-label">Theme</label>
+        <div class="theme-grid" id="theme-grid">
+          <button class="theme-swatch" data-theme="sepia" title="Sepia"><span style="background:#FAF6EF;color:#3B2F1E">Aa</span>Sepia</button>
+          <button class="theme-swatch" data-theme="soft" title="Soft White"><span style="background:#F5F5F0;color:#2C2C2C">Aa</span>Soft</button>
+          <button class="theme-swatch" data-theme="dark" title="Dark"><span style="background:#1A1A1A;color:#D4C9B8">Aa</span>Dark</button>
+          <button class="theme-swatch" data-theme="grey" title="Paper Grey"><span style="background:#ECEAE4;color:#2A2A2A">Aa</span>Grey</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="font-family">Font</label>
+        <select id="font-family" class="control-select">
+          <option value="serif">Serif</option>
+          <option value="sans">Sans-serif</option>
+          <option value="mono">Monospace</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="font-size">Size <span id="font-size-val">18px</span></label>
+        <input id="font-size" type="range" min="14" max="28" step="1" value="18" />
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">Line height</label>
+        <div class="seg-control" id="line-height">
+          <button data-value="1.5">Compact</button>
+          <button data-value="1.8" class="active">Comfortable</button>
+          <button data-value="2.1">Spacious</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">Line width</label>
+        <div class="seg-control" id="line-width">
+          <button data-value="540">Narrow</button>
+          <button data-value="640" class="active">Medium</button>
+          <button data-value="780">Wide</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">Letter spacing</label>
+        <div class="seg-control" id="letter-spacing">
+          <button data-value="0" class="active">Normal</button>
+          <button data-value="0.03">Wide</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label">View</label>
+        <div class="seg-control" id="view-mode">
+          <button data-value="paginated" class="active">Paginated</button>
+          <button data-value="scroll">Scroll</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ========================= TOC PANEL ========================= -->
+  <aside id="toc-panel" class="side-panel side-panel-left" hidden>
+    <div class="panel-header">
+      <h2>Contents</h2>
+      <button class="icon-btn panel-close" data-close="toc-panel" aria-label="Close">×</button>
+    </div>
+    <div class="panel-body">
+      <ul id="toc-list" class="toc-list"></ul>
+      <div id="toc-empty" class="toc-empty" hidden>No table of contents available.</div>
+
+      <div id="bookmarks-section" class="bookmarks-section">
+        <h3>Bookmarks</h3>
+        <ul id="bookmarks-list" class="bookmarks-list"></ul>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ========================= GO TO PAGE MODAL ========================= -->
+  <div id="goto-modal" class="modal" hidden>
+    <div class="modal-inner">
+      <label for="goto-input">Go to page</label>
+      <input id="goto-input" type="number" min="1" />
+      <div class="modal-actions">
+        <button id="goto-cancel" class="text-btn">Cancel</button>
+        <button id="goto-go" class="text-btn primary">Go</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-scrim" class="panel-scrim" hidden></div>
+
+  <!-- Third-party libraries via CDN.
+       PDF.js is loaded lazily inside reader-pdf.js (dynamic import). -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/epub.js/0.3.93/epub.min.js"></script>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
