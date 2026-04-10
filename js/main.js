@@ -83,6 +83,9 @@ const els = {
   tocList: $('toc-list'),
   tocEmpty: $('toc-empty'),
   bookmarksList: $('bookmarks-list'),
+  zoomRange: $('zoom-range'),
+  zoomVal: $('zoom-val'),
+  zoomToast: $('zoom-toast'),
 };
 
 // ============================================================
@@ -431,6 +434,38 @@ function bindReaderEvents() {
 
   // Mouse-movement auto-hides chrome
   document.addEventListener('mousemove', resetChromeTimer);
+
+  // Ctrl+scroll / trackpad zoom on the reading area
+  els.viewer.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      setZoom(state.prefs.zoom + delta);
+    }
+  }, { passive: false });
+
+  // Pinch-to-zoom on mobile
+  let pinchStartDist = 0;
+  let pinchStartZoom = 1;
+  els.viewer.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      pinchStartDist = Math.hypot(dx, dy);
+      pinchStartZoom = state.prefs.zoom;
+    }
+  }, { passive: false });
+  els.viewer.addEventListener('touchmove', (e) => {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      const scale = dist / pinchStartDist;
+      setZoom(pinchStartZoom * scale);
+    }
+  }, { passive: false });
 }
 
 function exitToHome() {
@@ -503,6 +538,11 @@ function bindSettingsPanel() {
     savePrefs(state.prefs);
     state.reader?.setViewMode(v);
   });
+
+  // Zoom slider
+  els.zoomRange.addEventListener('input', () => {
+    setZoom(parseInt(els.zoomRange.value, 10) / 100);
+  });
 }
 
 function bindSegControl(root, onChange) {
@@ -527,6 +567,10 @@ function syncControlsFromPrefs() {
   setSegActive(els.lineWidth, String(state.prefs.lineWidth));
   setSegActive(els.letterSpacing, String(state.prefs.letterSpacing));
   setSegActive(els.viewMode, state.prefs.viewMode);
+  // Zoom
+  const zoomPct = Math.round((state.prefs.zoom || 1) * 100);
+  els.zoomRange.value = zoomPct;
+  els.zoomVal.textContent = zoomPct + '%';
   // Theme swatches
   els.themeGrid.querySelectorAll('.theme-swatch').forEach((btn) => {
     btn.classList.toggle('active', btn.dataset.theme === state.prefs.theme);
@@ -551,6 +595,31 @@ function persistAndApply() {
   savePrefs(state.prefs);
   applyPrefs(state.prefs);
   state.reader?.applyTypography();
+}
+
+// ============================================================
+// Zoom
+// ============================================================
+let zoomToastTimer = null;
+
+function setZoom(value) {
+  // Clamp between 0.5 and 2.0, snap to 0.1 increments
+  value = Math.round(Math.max(0.5, Math.min(2.0, value)) * 10) / 10;
+  state.prefs.zoom = value;
+  persistAndApply();
+
+  // Update slider + label
+  const pct = Math.round(value * 100);
+  els.zoomRange.value = pct;
+  els.zoomVal.textContent = pct + '%';
+
+  // Show toast
+  els.zoomToast.textContent = pct + '%';
+  els.zoomToast.classList.add('visible');
+  clearTimeout(zoomToastTimer);
+  zoomToastTimer = setTimeout(() => {
+    els.zoomToast.classList.remove('visible');
+  }, 800);
 }
 
 // ============================================================

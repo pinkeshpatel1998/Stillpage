@@ -14,6 +14,7 @@ export const defaultPrefs = {
   lineWidth: 640,
   letterSpacing: 0,
   viewMode: 'paginated',
+  zoom: 1,
 };
 
 function safeParse(str, fallback) {

@@ -18,6 +18,7 @@ export function applyPrefs(prefs) {
   root.style.setProperty('--reader-line-height', String(prefs.lineHeight));
   root.style.setProperty('--reader-line-width', `${prefs.lineWidth}px`);
   root.style.setProperty('--reader-letter-spacing', `${prefs.letterSpacing}em`);
+  root.style.setProperty('--reader-zoom', String(prefs.zoom || 1));
 }
 
 export function cycleTheme(current) {
