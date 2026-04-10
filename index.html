@@ -12,7 +12,8 @@
 
   <!-- ========================= HOME / UPLOAD ========================= -->
   <section id="home" class="home">
-    <div class="home-inner">
+    <!-- Empty state: shown when library is empty -->
+    <div id="home-empty" class="home-inner">
       <h1 class="home-title">Stillpage</h1>
       <p class="home-tagline">A calm place to read your documents.</p>
 
@@ -40,10 +41,34 @@
       </div>
 
       <div id="error-banner" class="error-banner" hidden></div>
+    </div>
 
-      <div id="recent-section" class="recent-section" hidden>
-        <h2 class="recent-title">Recently opened</h2>
-        <ul id="recent-list" class="recent-list"></ul>
+    <!-- Library: shown when books exist -->
+    <div id="home-library" class="home-library" hidden>
+      <header class="library-header">
+        <div class="library-header-left">
+          <h1 class="library-logo">Stillpage</h1>
+          <span id="library-count" class="library-count"></span>
+        </div>
+        <div class="library-header-right">
+          <div class="library-search-wrap">
+            <svg class="library-search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input id="library-search" type="text" class="library-search" placeholder="Search library…" />
+          </div>
+          <label class="library-add-btn" for="file-input-lib" tabindex="0" title="Add a book">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add
+            <input id="file-input-lib" type="file" accept=".pdf,.epub,.txt,.md,.markdown" hidden />
+          </label>
+        </div>
+      </header>
+
+      <div id="library-error" class="error-banner" hidden></div>
+
+      <div id="library-grid" class="library-grid"></div>
+
+      <div id="library-drop-hint" class="library-drop-hint" hidden>
+        <span>Drop to add to your library</span>
       </div>
     </div>
   </section>

@@ -12,6 +12,10 @@ import { applyPrefs, cycleTheme } from './theme.js';
 import { createPdfReader } from './reader-pdf.js';
 import { createEpubReader } from './reader-epub.js';
 import { createTextReader } from './reader-text.js';
+import {
+  saveBook, getBook, deleteBook, getAllBooks, updateBookMeta, bookToFile,
+  generatePdfCover, generateEpubCover, generateTextCover,
+} from './library-db.js';
 
 // ----- State -----
 const state = {
@@ -30,12 +34,18 @@ const $ = (id) => document.getElementById(id);
 const els = {
   body: document.body,
   home: $('home'),
+  homeEmpty: $('home-empty'),
+  homeLibrary: $('home-library'),
   reader: $('reader'),
   dropZone: $('drop-zone'),
   fileInput: $('file-input'),
+  fileInputLib: $('file-input-lib'),
   errorBanner: $('error-banner'),
-  recentSection: $('recent-section'),
-  recentList: $('recent-list'),
+  libraryError: $('library-error'),
+  libraryGrid: $('library-grid'),
+  libraryCount: $('library-count'),
+  librarySearch: $('library-search'),
+  libraryDropHint: $('library-drop-hint'),
   viewer: $('viewer'),
   loading: $('loading'),
   topBar: $('top-bar'),
@@ -78,42 +88,52 @@ const els = {
 // ============================================================
 // Initialization
 // ============================================================
-function init() {
+async function init() {
   applyPrefs(state.prefs);
   syncControlsFromPrefs();
-  renderRecentList();
   bindHomeEvents();
   bindReaderEvents();
   bindSettingsPanel();
   bindKeyboard();
+  await renderLibrary();
 }
 
 // ============================================================
 // Home screen / file upload
 // ============================================================
 function bindHomeEvents() {
-  // File input
-  els.fileInput.addEventListener('change', (e) => {
+  // File inputs (empty state + library header)
+  const onFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file) handleFile(file);
-  });
+    e.target.value = ''; // reset so re-uploading the same file triggers change
+  };
+  els.fileInput.addEventListener('change', onFileChange);
+  els.fileInputLib.addEventListener('change', onFileChange);
 
   // Drag and drop — attach to whole body for a full-page drop target
-  ['dragenter', 'dragover'].forEach((evt) => {
-    document.addEventListener(evt, (e) => {
-      e.preventDefault();
-      els.dropZone.classList.add('dragging');
-    });
+  let dragCounter = 0;
+  document.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragCounter++;
+    els.dropZone?.classList.add('dragging');
+    if (!els.homeLibrary.hidden) els.libraryDropHint.hidden = false;
   });
-  ['dragleave', 'drop'].forEach((evt) => {
-    document.addEventListener(evt, (e) => {
-      e.preventDefault();
-      if (evt === 'dragleave' && e.target !== document.body && e.target !== els.dropZone) return;
-      els.dropZone.classList.remove('dragging');
-    });
+  document.addEventListener('dragover', (e) => e.preventDefault());
+  document.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dragCounter--;
+    if (dragCounter <= 0) {
+      dragCounter = 0;
+      els.dropZone?.classList.remove('dragging');
+      els.libraryDropHint.hidden = true;
+    }
   });
   document.addEventListener('drop', (e) => {
     e.preventDefault();
+    dragCounter = 0;
+    els.dropZone?.classList.remove('dragging');
+    els.libraryDropHint.hidden = true;
     const file = e.dataTransfer?.files?.[0];
     if (file) handleFile(file);
   });
@@ -125,12 +145,17 @@ function bindHomeEvents() {
       els.fileInput.click();
     }
   });
+
+  // Library search
+  els.librarySearch.addEventListener('input', () => renderLibrary());
 }
 
 function showError(msg) {
-  els.errorBanner.textContent = msg;
-  els.errorBanner.hidden = false;
-  setTimeout(() => { els.errorBanner.hidden = true; }, 4000);
+  // Show in whichever view is active
+  const banner = els.homeLibrary.hidden ? els.errorBanner : els.libraryError;
+  banner.textContent = msg;
+  banner.hidden = false;
+  setTimeout(() => { banner.hidden = true; }, 4000);
 }
 
 function detectFormat(file) {
@@ -149,8 +174,57 @@ async function handleFile(file) {
     return;
   }
 
+  const id = bookIdFor(file);
+  const arrayBuf = await file.arrayBuffer();
+
+  // Save to IndexedDB if not already stored
+  const existing = await getBook(id);
+  if (!existing) {
+    // Generate cover in background
+    let cover = null;
+    try {
+      if (format === 'pdf') cover = await generatePdfCover(arrayBuf);
+      else if (format === 'epub') cover = await generateEpubCover(arrayBuf);
+      else cover = generateTextCover(file.name.replace(/\.[^.]+$/, ''), format);
+    } catch { /* cover is optional */ }
+
+    await saveBook({
+      id,
+      name: file.name,
+      format,
+      size: file.size,
+      data: arrayBuf,
+      cover,
+      title: file.name.replace(/\.[^.]+$/, ''),
+      addedAt: Date.now(),
+      lastOpenedAt: Date.now(),
+      progress: 0,
+    });
+  } else {
+    await updateBookMeta(id, { lastOpenedAt: Date.now() });
+  }
+
+  // Re-create a File from the buffer (so readers can consume it)
+  const bookFile = existing ? bookToFile(existing) : file;
+
+  await openBook(id, bookFile, format);
+}
+
+// Open a book from the library by its ID (file already loaded or from IndexedDB)
+async function openBookById(id) {
+  const book = await getBook(id);
+  if (!book) {
+    showError('Book not found in library.');
+    return;
+  }
+  await updateBookMeta(id, { lastOpenedAt: Date.now() });
+  const file = bookToFile(book);
+  await openBook(id, file, book.format);
+}
+
+async function openBook(id, file, format) {
   state.file = file;
-  state.bookId = bookIdFor(file);
+  state.bookId = id;
   state.bookFormat = format;
   state.bookTitle = file.name.replace(/\.[^.]+$/, '');
 
@@ -179,20 +253,18 @@ async function handleFile(file) {
       state.reader = await createPdfReader(common);
     } else if (format === 'epub') {
       state.reader = await createEpubReader(common);
-      // Prefer the book's real title if available
       const realTitle = await state.reader.getTitle?.();
       if (realTitle) {
         state.bookTitle = realTitle;
         els.bookTitle.textContent = realTitle;
+        await updateBookMeta(id, { title: realTitle });
       }
     } else {
       state.reader = await createTextReader(common);
     }
 
-    // Wire progress updates
     state.reader.onProgress(updateProgressUI);
 
-    // Restore last position if available
     const book = loadBookState(state.bookId);
     state.bookmarks = book.bookmarks || [];
     if (book.position) {
@@ -200,20 +272,9 @@ async function handleFile(file) {
     }
     renderBookmarks();
 
-    // Populate TOC (lazy — load on first open)
     els.tocList.innerHTML = '';
     els.tocEmpty.hidden = true;
 
-    // Save to recents
-    addRecent({
-      id: state.bookId,
-      name: file.name,
-      format,
-      size: file.size,
-      lastOpened: Date.now(),
-    });
-
-    // Start auto-hide chrome
     resetChromeTimer();
   } catch (err) {
     console.error(err);
@@ -225,51 +286,102 @@ async function handleFile(file) {
   }
 }
 
-function renderRecentList() {
-  const list = loadRecent();
-  if (list.length === 0) {
-    els.recentSection.hidden = true;
+// ============================================================
+// Library rendering
+// ============================================================
+async function renderLibrary() {
+  let books;
+  try {
+    books = await getAllBooks();
+  } catch {
+    books = [];
+  }
+
+  // Filter by search query
+  const q = (els.librarySearch?.value || '').trim().toLowerCase();
+  if (q) {
+    books = books.filter((b) =>
+      (b.title || b.name).toLowerCase().includes(q) ||
+      b.format.toLowerCase().includes(q),
+    );
+  }
+
+  // Sort: most recently opened first
+  books.sort((a, b) => (b.lastOpenedAt || 0) - (a.lastOpenedAt || 0));
+
+  if (books.length === 0 && !q) {
+    // Show empty state
+    els.homeEmpty.hidden = false;
+    els.homeLibrary.hidden = true;
     return;
   }
-  els.recentSection.hidden = false;
-  els.recentList.innerHTML = '';
-  for (const entry of list) {
-    const li = document.createElement('li');
-    const btn = document.createElement('button');
-    btn.innerHTML = `
-      <span class="recent-name">${escapeHtml(entry.name)}</span>
-      <span class="recent-meta">${entry.format.toUpperCase()} · ${formatDate(entry.lastOpened)}</span>
+
+  // Show library
+  els.homeEmpty.hidden = true;
+  els.homeLibrary.hidden = false;
+
+  const allBooks = await getAllBooks();
+  els.libraryCount.textContent = `${allBooks.length} book${allBooks.length !== 1 ? 's' : ''}`;
+
+  els.libraryGrid.innerHTML = '';
+  for (const book of books) {
+    const card = document.createElement('div');
+    card.className = 'book-card';
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', `Open ${book.title || book.name}`);
+
+    const progressPct = Math.round((book.progress || 0) * 100);
+
+    card.innerHTML = `
+      <div class="book-cover">
+        ${book.cover ? `<img src="${book.cover}" alt="" loading="lazy" />` : ''}
+        <div class="book-progress-bar">
+          <div class="book-progress-fill" style="width:${progressPct}%"></div>
+        </div>
+      </div>
+      <button class="book-card-menu" title="Remove from library" aria-label="Remove ${book.title || book.name}">×</button>
+      <div class="book-meta">
+        <div class="book-card-title">${escapeHtml(book.title || book.name)}</div>
+        <div class="book-card-sub">
+          <span class="book-card-format">${book.format}</span>
+          <span>${formatSize(book.size)}</span>
+        </div>
+      </div>
     `;
-    btn.title = 'Re-open requires selecting the file again (browsers cannot store file content)';
-    btn.addEventListener('click', () => {
-      // We cannot store the actual file content in localStorage, so opening a
-      // recent entry just prompts the user to re-pick the file.
-      els.fileInput.click();
+
+    // Open book on click
+    card.addEventListener('click', (e) => {
+      if (e.target.closest('.book-card-menu')) return;
+      openBookById(book.id);
+    });
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openBookById(book.id);
+      }
     });
 
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'recent-remove';
-    removeBtn.setAttribute('aria-label', 'Remove from recents');
-    removeBtn.textContent = '×';
-    removeBtn.addEventListener('click', (e) => {
+    // Delete button
+    card.querySelector('.book-card-menu').addEventListener('click', async (e) => {
       e.stopPropagation();
-      removeRecent(entry.id);
-      renderRecentList();
+      await deleteBook(book.id);
+      await renderLibrary();
     });
 
-    btn.appendChild(removeBtn);
-    li.appendChild(btn);
-    els.recentList.appendChild(li);
+    els.libraryGrid.appendChild(card);
+  }
+
+  if (books.length === 0 && q) {
+    els.libraryGrid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:40px 0;">No books match "${escapeHtml(q)}"</div>`;
   }
 }
 
-function formatDate(ts) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  const today = new Date();
-  const sameDay = d.toDateString() === today.toDateString();
-  if (sameDay) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return d.toLocaleDateString();
+function formatSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
 
 function escapeHtml(s) {
@@ -334,7 +446,7 @@ function exitToHome() {
   els.reader.classList.remove('chrome-hidden');
   clearTimeout(state.chromeHideTimer);
   closeAllPanels();
-  renderRecentList();
+  renderLibrary();
 }
 
 function updateProgressUI({ currentPage, totalPages, percent }) {
@@ -345,9 +457,11 @@ function updateProgressUI({ currentPage, totalPages, percent }) {
     els.progressFill.style.width = '0%';
     els.pageLabel.textContent = '';
   }
-  // Persist position
+  // Persist position to localStorage
   if (state.bookId && state.reader) {
     updateBookPosition(state.bookId, state.reader.getPosition());
+    // Also persist progress % to IndexedDB for library card display
+    updateBookMeta(state.bookId, { progress: percent || 0 });
   }
   renderBookmarkDots();
 }
